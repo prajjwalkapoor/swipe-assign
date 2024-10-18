@@ -1,8 +1,14 @@
-import { combineReducers } from "@reduxjs/toolkit";
-import invoicesReducer from "./invoicesSlice"; // Import your other reducers
+import { configureStore } from "@reduxjs/toolkit";
+import invoicesReducer from "./invoicesSlice";
+import productsReducer from "./productsSlice";
 
-const rootReducer = combineReducers({
+const rootReducer = {
   invoices: invoicesReducer,
+  products: productsReducer,
+};
+
+export const store = configureStore({
+  reducer: rootReducer,
 });
 
 export default rootReducer;

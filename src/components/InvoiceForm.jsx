@@ -14,6 +14,7 @@ import { addInvoice, updateInvoice } from "../redux/invoicesSlice";
 import { Link, useParams, useLocation, useNavigate } from "react-router-dom";
 import generateRandomId from "../utils/generateRandomId";
 import { useInvoiceListData } from "../redux/hooks";
+import ProductSelectionModal from "./ProductSelectionModal";
 
 const InvoiceForm = () => {
   const dispatch = useDispatch();
@@ -54,17 +55,11 @@ const InvoiceForm = () => {
           discountRate: "",
           discountAmount: "0.00",
           currency: "$",
-          items: [
-            {
-              itemId: 0,
-              itemName: "",
-              itemDescription: "",
-              itemPrice: "1.00",
-              itemQuantity: 1,
-            },
-          ],
+          items: [],
         }
   );
+
+  const [showProductModal, setShowProductModal] = useState(false);
 
   useEffect(() => {
     handleCalculateTotal();
@@ -79,19 +74,43 @@ const InvoiceForm = () => {
   };
 
   const handleAddEvent = () => {
-    const id = (+new Date() + Math.floor(Math.random() * 999999)).toString(36);
+    setShowProductModal(true);
+  };
+
+  const handleProductSelect = (product) => {
+    // Check if the product is already in the items array
+    const existingItem = formData.items.find(
+      (item) => item.itemName === product.name
+    );
+
+    if (existingItem) {
+      alert(
+        "This product is already in the invoice. Please modify its quantity instead."
+      );
+      return;
+    }
+
+    const id = generateRandomId();
     const newItem = {
-      itemId: id,
-      itemName: "",
-      itemDescription: "",
-      itemPrice: "1.00",
+      id: id,
+      itemName: product.name,
+      itemDescription: product.description,
+      itemPrice: Number(product.price),
       itemQuantity: 1,
     };
-    setFormData({
-      ...formData,
-      items: [...formData.items, newItem],
+
+    setFormData((prevState) => {
+      const updatedItems = [...prevState.items, newItem];
+      return {
+        ...prevState,
+        items: updatedItems,
+      };
     });
-    handleCalculateTotal();
+
+    setShowProductModal(false);
+
+    // Call handleCalculateTotal after updating the state
+    setTimeout(() => handleCalculateTotal(), 0);
   };
 
   const handleCalculateTotal = () => {
@@ -99,8 +118,7 @@ const InvoiceForm = () => {
       let subTotal = 0;
 
       prevFormData.items.forEach((item) => {
-        subTotal +=
-          parseFloat(item.itemPrice).toFixed(2) * parseInt(item.itemQuantity);
+        subTotal += parseFloat(item.itemPrice) * parseInt(item.itemQuantity);
       });
 
       const taxAmount = parseFloat(
@@ -127,7 +145,7 @@ const InvoiceForm = () => {
 
   const onItemizedItemEdit = (evt, id) => {
     const updatedItems = formData.items.map((oldItem) => {
-      if (oldItem.itemId === id) {
+      if (oldItem.id === id) {
         return { ...oldItem, [evt.target.name]: evt.target.value };
       }
       return oldItem;
@@ -157,15 +175,39 @@ const InvoiceForm = () => {
   };
 
   const handleAddInvoice = () => {
+    handleCalculateTotal();
+
+    const invoiceData = {
+      ...formData,
+      currency: formData.currency,
+      currentDate: formData.currentDate,
+      invoiceNumber: formData.invoiceNumber,
+      dateOfIssue: formData.dateOfIssue,
+      billTo: formData.billTo,
+      billToEmail: formData.billToEmail,
+      billToAddress: formData.billToAddress,
+      billFrom: formData.billFrom,
+      billFromEmail: formData.billFromEmail,
+      billFromAddress: formData.billFromAddress,
+      notes: formData.notes,
+      total: formData.total,
+      subTotal: formData.subTotal,
+      taxRate: formData.taxRate,
+      taxAmount: formData.taxAmount,
+      discountRate: formData.discountRate,
+      discountAmount: formData.discountAmount,
+      items: formData.items,
+    };
+
     if (isEdit) {
-      dispatch(updateInvoice({ id: params.id, updatedInvoice: formData }));
-      alert("Invoice updated successfuly 🥳");
+      dispatch(updateInvoice({ ...invoiceData, id: params.id }));
+      alert("Invoice updated successfully 🥳");
     } else if (isCopy) {
-      dispatch(addInvoice({ id: generateRandomId(), ...formData }));
-      alert("Invoice added successfuly 🥳");
+      dispatch(addInvoice({ ...invoiceData, id: generateRandomId() }));
+      alert("Invoice added successfully 🥳");
     } else {
-      dispatch(addInvoice(formData));
-      alert("Invoice added successfuly 🥳");
+      dispatch(addInvoice(invoiceData));
+      alert("Invoice added successfully 🥳");
     }
     navigate("/");
   };
@@ -480,6 +522,12 @@ const InvoiceForm = () => {
           </div>
         </Col>
       </Row>
+
+      <ProductSelectionModal
+        show={showProductModal}
+        handleClose={() => setShowProductModal(false)}
+        handleProductSelect={handleProductSelect}
+      />
     </Form>
   );
 };
