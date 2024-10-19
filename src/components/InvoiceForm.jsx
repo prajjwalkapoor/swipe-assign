@@ -18,6 +18,7 @@ import ProductSelectionModal from "./ProductSelectionModal";
 import { updateProduct, addProduct } from "../redux/productsSlice";
 import getCurrencyCode from "../utils/getCurrencyCode";
 import getConvertedCurrencyValue from "../fetchers/getConvertedCurrencyValue";
+import { Spinner } from "react-bootstrap";
 
 const InvoiceForm = () => {
   const dispatch = useDispatch();
@@ -30,41 +31,57 @@ const InvoiceForm = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [copyId, setCopyId] = useState("");
   const { getOneInvoice, listSize } = useInvoiceListData();
-  const [formData, setFormData] = useState(
-    isEdit
-      ? getOneInvoice(params.id) || []
-      : isCopy && params.id
-      ? {
-          ...getOneInvoice(params.id),
-          id: generateRandomId(),
-          invoiceNumber: listSize + 1,
-        }
-      : {
-          id: generateRandomId(),
-          currentDate: new Date().toLocaleDateString(),
-          invoiceNumber: listSize + 1,
-          dateOfIssue: "",
-          billTo: "",
-          billToEmail: "",
-          billToAddress: "",
-          billFrom: "",
-          billFromEmail: "",
-          billFromAddress: "",
-          notes: "",
-          total: "0.00",
-          subTotal: "0.00",
-          taxRate: "",
-          taxAmount: "0.00",
-          discountRate: "",
-          discountAmount: "0.00",
-          currency: "$",
-          items: [],
-        }
-  );
+  const [formData, setFormData] = useState({
+    id: generateRandomId(),
+    currentDate: new Date().toLocaleDateString(),
+    invoiceNumber: listSize + 1,
+    dateOfIssue: "",
+    billTo: "",
+    billToEmail: "",
+    billToAddress: "",
+    billFrom: "",
+    billFromEmail: "",
+    billFromAddress: "",
+    notes: "",
+    total: "0.00",
+    subTotal: "0.00",
+    taxRate: "",
+    taxAmount: "0.00",
+    discountRate: "",
+    discountAmount: "0.00",
+    currency: "US$",
+    items: [],
+  });
+
+  const [loading, setLoading] = useState(true);
 
   const [showProductModal, setShowProductModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
   const products = useSelector((state) => state.products);
+
+  useEffect(() => {
+    const fetchInvoiceData = () => {
+      if (isEdit || (isCopy && params.id)) {
+        try {
+          const invoiceData = getOneInvoice(params.id);
+          if (invoiceData) {
+            setFormData((_) => ({
+              ...invoiceData,
+              id: isCopy ? generateRandomId() : invoiceData.id,
+              invoiceNumber: isCopy ? listSize + 1 : invoiceData.invoiceNumber,
+            }));
+          } else {
+            console.error("Invoice not found");
+          }
+        } catch (error) {
+          console.error("Error fetching invoice:", error);
+        }
+      }
+      setLoading(false);
+    };
+
+    fetchInvoiceData();
+  }, []);
 
   useEffect(() => {
     handleCalculateTotal();
@@ -215,15 +232,20 @@ const InvoiceForm = () => {
   };
 
   const handleCopyInvoice = () => {
-    const recievedInvoice = getOneInvoice(copyId);
-    if (recievedInvoice) {
-      setFormData({
-        ...recievedInvoice,
-        id: formData.id,
-        invoiceNumber: formData.invoiceNumber,
-      });
-    } else {
-      alert("Invoice does not exists!!!!!");
+    try {
+      const receivedInvoice = getOneInvoice(copyId);
+      if (receivedInvoice) {
+        setFormData({
+          ...receivedInvoice,
+          id: generateRandomId(),
+          invoiceNumber: listSize + 1,
+        });
+      } else {
+        alert("Invoice does not exist!");
+      }
+    } catch (error) {
+      console.error("Error copying invoice:", error);
+      alert("An error occurred while copying the invoice. Please try again.");
     }
   };
 
@@ -288,6 +310,18 @@ const InvoiceForm = () => {
       ).toFixed(2),
     }));
   };
+
+  if (loading) {
+    <div
+      className="d-flex justify-content-center align-items-center"
+      style={{ height: "100vh" }}
+    >
+      <Spinner animation="border" role="status">
+        <span className="visually-hidden">Loading...</span>
+      </Spinner>
+    </div>;
+  }
+
   return (
     <Form>
       <div className="d-flex align-items-center">
