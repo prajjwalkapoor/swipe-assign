@@ -1,71 +1,44 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import { Button, Table } from "react-bootstrap";
 import { useSelector } from "react-redux";
 import ProductModal from "../components/ProductModal";
-import { useNavigate } from "react-router-dom";
-import { BiSolidPencil } from "react-icons/bi";
 
 const Products = () => {
+  const products = useSelector((state) => state.products);
   const [showModal, setShowModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
-  const products = useSelector((state) => state.products);
-  console.log(products);
-  const navigate = useNavigate();
 
-  const handleAddProduct = () => {
+  const handleCloseModal = useCallback(() => {
+    setShowModal(false);
     setEditingProduct(null);
-    setShowModal(true);
-  };
+  }, []);
 
-  const handleEditProduct = (product) => {
+  const handleOpenModal = (product = null) => {
     setEditingProduct(product);
     setShowModal(true);
   };
 
-  const handleModalSubmit = () => {
-    setShowModal(false);
-    setEditingProduct(null);
-  };
-
-  const handleGoBack = () => {
-    navigate(-1);
-  };
-
   return (
     <div>
-      <div className="d-flex justify-content-between align-items-center mb-4">
-        <h1>Products</h1>
-        <Button onClick={handleGoBack} variant="secondary">
-          Go Back
-        </Button>
-      </div>
-      <Button onClick={handleAddProduct} className="mb-3">
-        Add New Product
-      </Button>
+      <h1>Products</h1>
+      <Button onClick={() => handleOpenModal()}>Add Product</Button>
       <Table striped bordered hover>
         <thead>
           <tr>
-            <th>ID</th>
             <th>Name</th>
-            <th>Price</th>
             <th>Description</th>
+            <th>Price</th>
             <th>Actions</th>
           </tr>
         </thead>
         <tbody>
           {products.map((product) => (
             <tr key={product.id}>
-              <td>{product.id}</td>
               <td>{product.name}</td>
-              <td>${product.price.toFixed(2)}</td>
               <td>{product.description}</td>
+              <td>${product.price}</td>
               <td>
-                <Button
-                  variant="outline-primary"
-                  onClick={() => handleEditProduct(product)}
-                >
-                  <BiSolidPencil />
-                </Button>
+                <Button onClick={() => handleOpenModal(product)}>Edit</Button>
               </td>
             </tr>
           ))}
@@ -73,8 +46,7 @@ const Products = () => {
       </Table>
       <ProductModal
         show={showModal}
-        onHide={() => setShowModal(false)}
-        onSubmit={handleModalSubmit}
+        onClose={handleCloseModal}
         editingProduct={editingProduct}
       />
     </div>
