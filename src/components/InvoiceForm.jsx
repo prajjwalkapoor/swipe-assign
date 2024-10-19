@@ -9,12 +9,15 @@ import InvoiceItem from "./InvoiceItem";
 import InvoiceModal from "./InvoiceModal";
 import { BiArrowBack } from "react-icons/bi";
 import InputGroup from "react-bootstrap/InputGroup";
-import { useDispatch } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import { addInvoice, updateInvoice } from "../redux/invoicesSlice";
 import { Link, useParams, useLocation, useNavigate } from "react-router-dom";
 import generateRandomId from "../utils/generateRandomId";
 import { useInvoiceListData } from "../redux/hooks";
 import ProductSelectionModal from "./ProductSelectionModal";
+import { updateProduct, addProduct } from "../redux/productsSlice";
+import getCurrencyCode from "../utils/getCurrencyCode";
+import getConvertedCurrencyValue from "../fetchers/getConvertedCurrencyValue";
 
 const InvoiceForm = () => {
   const dispatch = useDispatch();
@@ -29,7 +32,7 @@ const InvoiceForm = () => {
   const { getOneInvoice, listSize } = useInvoiceListData();
   const [formData, setFormData] = useState(
     isEdit
-      ? getOneInvoice(params.id)
+      ? getOneInvoice(params.id) || []
       : isCopy && params.id
       ? {
           ...getOneInvoice(params.id),
@@ -60,6 +63,8 @@ const InvoiceForm = () => {
   );
 
   const [showProductModal, setShowProductModal] = useState(false);
+  const [editingProduct, setEditingProduct] = useState(null);
+  const products = useSelector((state) => state.products);
 
   useEffect(() => {
     handleCalculateTotal();
@@ -78,7 +83,6 @@ const InvoiceForm = () => {
   };
 
   const handleProductSelect = (product) => {
-    // Check if the product is already in the items array
     const existingItem = formData.items.find(
       (item) => item.itemName === product.name
     );
@@ -90,9 +94,8 @@ const InvoiceForm = () => {
       return;
     }
 
-    const id = generateRandomId();
     const newItem = {
-      id: id,
+      id: product.id,
       itemName: product.name,
       itemDescription: product.description,
       itemPrice: Number(product.price),
@@ -109,7 +112,6 @@ const InvoiceForm = () => {
 
     setShowProductModal(false);
 
-    // Call handleCalculateTotal after updating the state
     setTimeout(() => handleCalculateTotal(), 0);
   };
 
@@ -161,7 +163,7 @@ const InvoiceForm = () => {
   };
 
   const onCurrencyChange = (selectedOption) => {
-    setFormData({ ...formData, currency: selectedOption.currency });
+    handleCurrencyConversion(selectedOption.currency, formData.currency);
   };
 
   const openModal = (event) => {
@@ -225,8 +227,69 @@ const InvoiceForm = () => {
     }
   };
 
+  const handleProductEdit = (product) => {
+    setEditingProduct(product);
+    setShowProductModal(true);
+  };
+
+  const handleProductUpdate = (updatedProduct) => {
+    dispatch(updateProduct(updatedProduct));
+    setEditingProduct(null);
+
+    const updatedItems = formData.items.map((item) =>
+      item.id === updatedProduct.id
+        ? {
+            ...item,
+            itemName: updatedProduct.name,
+            itemPrice: updatedProduct.price,
+          }
+        : item
+    );
+    setFormData((prevState) => ({ ...prevState, items: updatedItems }));
+    handleCalculateTotal();
+  };
+
+  const handleProductAdd = async (newProduct) => {
+    const toCurrency = getCurrencyCode(formData.currency);
+    if (toCurrency !== "USD") {
+      const conversionRate = await getConvertedCurrencyValue(toCurrency, "USD");
+      newProduct.price = (newProduct.price * conversionRate).toFixed(2);
+    }
+
+    dispatch(addProduct(newProduct));
+    setEditingProduct(null);
+    handleProductSelect(newProduct);
+  };
+
+  const handleCurrencyConversion = async (currency, prevCurrency) => {
+    const prevCurCode = getCurrencyCode(prevCurrency);
+    const curCode = getCurrencyCode(currency);
+    const convertedCurrencyValue = await getConvertedCurrencyValue(
+      curCode,
+      prevCurCode
+    );
+    const updatedItems = formData.items.map((item) => ({
+      ...item,
+      itemPrice: (Number(item.itemPrice) * convertedCurrencyValue).toFixed(2),
+    }));
+    setFormData((prevState) => ({
+      ...prevState,
+      currency: currency,
+      items: updatedItems,
+      total: (Number(prevState.total) * convertedCurrencyValue).toFixed(2),
+      subTotal: (Number(prevState.subTotal) * convertedCurrencyValue).toFixed(
+        2
+      ),
+      taxAmount: (Number(prevState.taxAmount) * convertedCurrencyValue).toFixed(
+        2
+      ),
+      discountAmount: (
+        Number(prevState.discountAmount) * convertedCurrencyValue
+      ).toFixed(2),
+    }));
+  };
   return (
-    <Form onSubmit={openModal}>
+    <Form>
       <div className="d-flex align-items-center">
         <BiArrowBack size={18} />
         <div className="fw-bold mt-1 mx-2 cursor-pointer">
@@ -412,7 +475,11 @@ const InvoiceForm = () => {
             >
               {isEdit ? "Update Invoice" : "Add Invoice"}
             </Button>
-            <Button variant="primary" type="submit" className="d-block w-100">
+            <Button
+              variant="primary"
+              onClick={openModal}
+              className="d-block w-100"
+            >
               Review Invoice
             </Button>
             <InvoiceModal
@@ -454,14 +521,15 @@ const InvoiceForm = () => {
                 }
                 className="btn btn-light my-1"
                 aria-label="Change Currency"
+                value={formData.currency}
               >
-                <option value="$">USD (United States Dollar)</option>
+                <option value="US$">USD (United States Dollar)</option>
                 <option value="£">GBP (British Pound Sterling)</option>
                 <option value="¥">JPY (Japanese Yen)</option>
-                <option value="$">CAD (Canadian Dollar)</option>
-                <option value="$">AUD (Australian Dollar)</option>
-                <option value="$">SGD (Singapore Dollar)</option>
-                <option value="¥">CNY (Chinese Renminbi)</option>
+                <option value="CA$">CAD (Canadian Dollar)</option>
+                <option value="AU$">AUD (Australian Dollar)</option>
+                <option value="SG$">SGD (Singapore Dollar)</option>
+                <option value="CN¥">CNY (Chinese Renminbi)</option>
                 <option value="₿">BTC (Bitcoin)</option>
               </Form.Select>
             </Form.Group>
@@ -525,8 +593,17 @@ const InvoiceForm = () => {
 
       <ProductSelectionModal
         show={showProductModal}
-        handleClose={() => setShowProductModal(false)}
+        handleClose={() => {
+          setShowProductModal(false);
+          setEditingProduct(null);
+        }}
         handleProductSelect={handleProductSelect}
+        handleProductEdit={handleProductEdit}
+        handleProductUpdate={handleProductUpdate}
+        handleProductAdd={handleProductAdd}
+        editingProduct={editingProduct}
+        products={products}
+        currency={formData.currency}
       />
     </Form>
   );
