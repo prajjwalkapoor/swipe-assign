@@ -1,6 +1,5 @@
 import { useSelector } from "react-redux";
 import { selectInvoiceList } from "./invoicesSlice";
-
 export const useInvoiceListData = () => {
   const invoiceList = useSelector(selectInvoiceList);
   const products = useSelector((state) => state.products);
@@ -14,11 +13,10 @@ export const useInvoiceListData = () => {
         id: item.id,
         itemName: product.name,
         itemDescription: product.description,
-        itemPrice: product.price,
+        itemPrice: item.itemPrice,
         itemQuantity: item.itemQuantity,
       };
     });
-    console.log("updated Items", updatedItems);
     return { ...invoice, items: updatedItems };
   };
 
