@@ -9,11 +9,16 @@ import InvoiceItem from "./InvoiceItem";
 import InvoiceModal from "./InvoiceModal";
 import { BiArrowBack } from "react-icons/bi";
 import InputGroup from "react-bootstrap/InputGroup";
-import { useDispatch } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import { addInvoice, updateInvoice } from "../redux/invoicesSlice";
 import { Link, useParams, useLocation, useNavigate } from "react-router-dom";
 import generateRandomId from "../utils/generateRandomId";
 import { useInvoiceListData } from "../redux/hooks";
+import ProductSelectionModal from "./ProductSelectionModal";
+import { updateProduct, addProduct } from "../redux/productsSlice";
+import getCurrencyCode from "../utils/getCurrencyCode";
+import getConvertedCurrencyValue from "../fetchers/getConvertedCurrencyValue";
+import { Spinner } from "react-bootstrap";
 
 const InvoiceForm = () => {
   const dispatch = useDispatch();
@@ -26,45 +31,57 @@ const InvoiceForm = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [copyId, setCopyId] = useState("");
   const { getOneInvoice, listSize } = useInvoiceListData();
-  const [formData, setFormData] = useState(
-    isEdit
-      ? getOneInvoice(params.id)
-      : isCopy && params.id
-      ? {
-          ...getOneInvoice(params.id),
-          id: generateRandomId(),
-          invoiceNumber: listSize + 1,
+  const [formData, setFormData] = useState({
+    id: generateRandomId(),
+    currentDate: new Date().toLocaleDateString(),
+    invoiceNumber: listSize + 1,
+    dateOfIssue: "",
+    billTo: "",
+    billToEmail: "",
+    billToAddress: "",
+    billFrom: "",
+    billFromEmail: "",
+    billFromAddress: "",
+    notes: "",
+    total: "0.00",
+    subTotal: "0.00",
+    taxRate: "",
+    taxAmount: "0.00",
+    discountRate: "",
+    discountAmount: "0.00",
+    currency: "US$",
+    items: [],
+  });
+
+  const [loading, setLoading] = useState(true);
+
+  const [showProductModal, setShowProductModal] = useState(false);
+  const [editingProduct, setEditingProduct] = useState(null);
+  const products = useSelector((state) => state.products);
+
+  useEffect(() => {
+    const fetchInvoiceData = () => {
+      if (isEdit || (isCopy && params.id)) {
+        try {
+          const invoiceData = getOneInvoice(params.id);
+          if (invoiceData) {
+            setFormData((_) => ({
+              ...invoiceData,
+              id: isCopy ? generateRandomId() : invoiceData.id,
+              invoiceNumber: isCopy ? listSize + 1 : invoiceData.invoiceNumber,
+            }));
+          } else {
+            console.error("Invoice not found");
+          }
+        } catch (error) {
+          console.error("Error fetching invoice:", error);
         }
-      : {
-          id: generateRandomId(),
-          currentDate: new Date().toLocaleDateString(),
-          invoiceNumber: listSize + 1,
-          dateOfIssue: "",
-          billTo: "",
-          billToEmail: "",
-          billToAddress: "",
-          billFrom: "",
-          billFromEmail: "",
-          billFromAddress: "",
-          notes: "",
-          total: "0.00",
-          subTotal: "0.00",
-          taxRate: "",
-          taxAmount: "0.00",
-          discountRate: "",
-          discountAmount: "0.00",
-          currency: "$",
-          items: [
-            {
-              itemId: 0,
-              itemName: "",
-              itemDescription: "",
-              itemPrice: "1.00",
-              itemQuantity: 1,
-            },
-          ],
-        }
-  );
+      }
+      setLoading(false);
+    };
+
+    fetchInvoiceData();
+  }, []);
 
   useEffect(() => {
     handleCalculateTotal();
@@ -79,19 +96,40 @@ const InvoiceForm = () => {
   };
 
   const handleAddEvent = () => {
-    const id = (+new Date() + Math.floor(Math.random() * 999999)).toString(36);
+    setShowProductModal(true);
+  };
+
+  const handleProductSelect = (product) => {
+    const existingItem = formData.items.find(
+      (item) => item.itemName === product.name
+    );
+
+    if (existingItem) {
+      alert(
+        "This product is already in the invoice. Please modify its quantity instead."
+      );
+      return;
+    }
+
     const newItem = {
-      itemId: id,
-      itemName: "",
-      itemDescription: "",
-      itemPrice: "1.00",
+      id: product.id,
+      itemName: product.name,
+      itemDescription: product.description,
+      itemPrice: Number(product.price),
       itemQuantity: 1,
     };
-    setFormData({
-      ...formData,
-      items: [...formData.items, newItem],
+
+    setFormData((prevState) => {
+      const updatedItems = [...prevState.items, newItem];
+      return {
+        ...prevState,
+        items: updatedItems,
+      };
     });
-    handleCalculateTotal();
+
+    setShowProductModal(false);
+
+    setTimeout(() => handleCalculateTotal(), 0);
   };
 
   const handleCalculateTotal = () => {
@@ -99,8 +137,7 @@ const InvoiceForm = () => {
       let subTotal = 0;
 
       prevFormData.items.forEach((item) => {
-        subTotal +=
-          parseFloat(item.itemPrice).toFixed(2) * parseInt(item.itemQuantity);
+        subTotal += parseFloat(item.itemPrice) * parseInt(item.itemQuantity);
       });
 
       const taxAmount = parseFloat(
@@ -127,7 +164,7 @@ const InvoiceForm = () => {
 
   const onItemizedItemEdit = (evt, id) => {
     const updatedItems = formData.items.map((oldItem) => {
-      if (oldItem.itemId === id) {
+      if (oldItem.id === id) {
         return { ...oldItem, [evt.target.name]: evt.target.value };
       }
       return oldItem;
@@ -143,7 +180,7 @@ const InvoiceForm = () => {
   };
 
   const onCurrencyChange = (selectedOption) => {
-    setFormData({ ...formData, currency: selectedOption.currency });
+    handleCurrencyConversion(selectedOption.currency, formData.currency);
   };
 
   const openModal = (event) => {
@@ -157,34 +194,136 @@ const InvoiceForm = () => {
   };
 
   const handleAddInvoice = () => {
+    handleCalculateTotal();
+
+    const invoiceData = {
+      ...formData,
+      currency: formData.currency,
+      currentDate: formData.currentDate,
+      invoiceNumber: formData.invoiceNumber,
+      dateOfIssue: formData.dateOfIssue,
+      billTo: formData.billTo,
+      billToEmail: formData.billToEmail,
+      billToAddress: formData.billToAddress,
+      billFrom: formData.billFrom,
+      billFromEmail: formData.billFromEmail,
+      billFromAddress: formData.billFromAddress,
+      notes: formData.notes,
+      total: formData.total,
+      subTotal: formData.subTotal,
+      taxRate: formData.taxRate,
+      taxAmount: formData.taxAmount,
+      discountRate: formData.discountRate,
+      discountAmount: formData.discountAmount,
+      items: formData.items,
+    };
+
     if (isEdit) {
-      dispatch(updateInvoice({ id: params.id, updatedInvoice: formData }));
-      alert("Invoice updated successfuly 🥳");
+      dispatch(updateInvoice({ ...invoiceData, id: params.id }));
+      alert("Invoice updated successfully 🥳");
     } else if (isCopy) {
-      dispatch(addInvoice({ id: generateRandomId(), ...formData }));
-      alert("Invoice added successfuly 🥳");
+      dispatch(addInvoice({ ...invoiceData, id: generateRandomId() }));
+      alert("Invoice added successfully 🥳");
     } else {
-      dispatch(addInvoice(formData));
-      alert("Invoice added successfuly 🥳");
+      dispatch(addInvoice(invoiceData));
+      alert("Invoice added successfully 🥳");
     }
     navigate("/");
   };
 
   const handleCopyInvoice = () => {
-    const recievedInvoice = getOneInvoice(copyId);
-    if (recievedInvoice) {
-      setFormData({
-        ...recievedInvoice,
-        id: formData.id,
-        invoiceNumber: formData.invoiceNumber,
-      });
-    } else {
-      alert("Invoice does not exists!!!!!");
+    try {
+      const receivedInvoice = getOneInvoice(copyId);
+      if (receivedInvoice) {
+        setFormData({
+          ...receivedInvoice,
+          id: generateRandomId(),
+          invoiceNumber: listSize + 1,
+        });
+      } else {
+        alert("Invoice does not exist!");
+      }
+    } catch (error) {
+      console.error("Error copying invoice:", error);
+      alert("An error occurred while copying the invoice. Please try again.");
     }
   };
 
+  const handleProductEdit = (product) => {
+    setEditingProduct(product);
+    setShowProductModal(true);
+  };
+
+  const handleProductUpdate = (updatedProduct) => {
+    dispatch(updateProduct(updatedProduct));
+    setEditingProduct(null);
+
+    const updatedItems = formData.items.map((item) =>
+      item.id === updatedProduct.id
+        ? {
+            ...item,
+            itemName: updatedProduct.name,
+            itemPrice: updatedProduct.price,
+          }
+        : item
+    );
+    setFormData((prevState) => ({ ...prevState, items: updatedItems }));
+    handleCalculateTotal();
+  };
+
+  const handleProductAdd = async (newProduct) => {
+    const toCurrency = getCurrencyCode(formData.currency);
+    if (toCurrency !== "USD") {
+      const conversionRate = await getConvertedCurrencyValue(toCurrency, "USD");
+      newProduct.price = (newProduct.price * conversionRate).toFixed(2);
+    }
+
+    dispatch(addProduct(newProduct));
+    setEditingProduct(null);
+    handleProductSelect(newProduct);
+  };
+
+  const handleCurrencyConversion = async (currency, prevCurrency) => {
+    const prevCurCode = getCurrencyCode(prevCurrency);
+    const curCode = getCurrencyCode(currency);
+    const convertedCurrencyValue = await getConvertedCurrencyValue(
+      curCode,
+      prevCurCode
+    );
+    const updatedItems = formData.items.map((item) => ({
+      ...item,
+      itemPrice: (Number(item.itemPrice) * convertedCurrencyValue).toFixed(2),
+    }));
+    setFormData((prevState) => ({
+      ...prevState,
+      currency: currency,
+      items: updatedItems,
+      total: (Number(prevState.total) * convertedCurrencyValue).toFixed(2),
+      subTotal: (Number(prevState.subTotal) * convertedCurrencyValue).toFixed(
+        2
+      ),
+      taxAmount: (Number(prevState.taxAmount) * convertedCurrencyValue).toFixed(
+        2
+      ),
+      discountAmount: (
+        Number(prevState.discountAmount) * convertedCurrencyValue
+      ).toFixed(2),
+    }));
+  };
+
+  if (loading) {
+    <div
+      className="d-flex justify-content-center align-items-center"
+      style={{ height: "100vh" }}
+    >
+      <Spinner animation="border" role="status">
+        <span className="visually-hidden">Loading...</span>
+      </Spinner>
+    </div>;
+  }
+
   return (
-    <Form onSubmit={openModal}>
+    <Form>
       <div className="d-flex align-items-center">
         <BiArrowBack size={18} />
         <div className="fw-bold mt-1 mx-2 cursor-pointer">
@@ -370,7 +509,11 @@ const InvoiceForm = () => {
             >
               {isEdit ? "Update Invoice" : "Add Invoice"}
             </Button>
-            <Button variant="primary" type="submit" className="d-block w-100">
+            <Button
+              variant="primary"
+              onClick={openModal}
+              className="d-block w-100"
+            >
               Review Invoice
             </Button>
             <InvoiceModal
@@ -412,14 +555,15 @@ const InvoiceForm = () => {
                 }
                 className="btn btn-light my-1"
                 aria-label="Change Currency"
+                value={formData.currency}
               >
-                <option value="$">USD (United States Dollar)</option>
+                <option value="US$">USD (United States Dollar)</option>
                 <option value="£">GBP (British Pound Sterling)</option>
                 <option value="¥">JPY (Japanese Yen)</option>
-                <option value="$">CAD (Canadian Dollar)</option>
-                <option value="$">AUD (Australian Dollar)</option>
-                <option value="$">SGD (Singapore Dollar)</option>
-                <option value="¥">CNY (Chinese Renminbi)</option>
+                <option value="CA$">CAD (Canadian Dollar)</option>
+                <option value="AU$">AUD (Australian Dollar)</option>
+                <option value="SG$">SGD (Singapore Dollar)</option>
+                <option value="CN¥">CNY (Chinese Renminbi)</option>
                 <option value="₿">BTC (Bitcoin)</option>
               </Form.Select>
             </Form.Group>
@@ -480,6 +624,21 @@ const InvoiceForm = () => {
           </div>
         </Col>
       </Row>
+
+      <ProductSelectionModal
+        show={showProductModal}
+        handleClose={() => {
+          setShowProductModal(false);
+          setEditingProduct(null);
+        }}
+        handleProductSelect={handleProductSelect}
+        handleProductEdit={handleProductEdit}
+        handleProductUpdate={handleProductUpdate}
+        handleProductAdd={handleProductAdd}
+        editingProduct={editingProduct}
+        products={products}
+        currency={formData.currency}
+      />
     </Form>
   );
 };

@@ -6,8 +6,14 @@ import { BiTrash } from "react-icons/bi";
 import EditableField from "./EditableField";
 
 const InvoiceItem = (props) => {
-  const { onItemizedItemEdit, currency, onRowDel, items, onRowAdd } = props;
-
+  const {
+    onItemizedItemEdit,
+    currency,
+    onRowDel,
+    items = [],
+    onRowAdd,
+  } = props;
+  console.log("items", items);
   const itemTable = items.map((item) => (
     <ItemRow
       key={item.id}
@@ -20,17 +26,25 @@ const InvoiceItem = (props) => {
 
   return (
     <div>
-      <Table>
-        <thead>
-          <tr>
-            <th>ITEM</th>
-            <th>QTY</th>
-            <th>PRICE/RATE</th>
-            <th className="text-center">ACTION</th>
-          </tr>
-        </thead>
-        <tbody>{itemTable}</tbody>
-      </Table>
+      <h6>Invoice Items</h6>
+      {items.length > 0 ? (
+        <Table>
+          <thead>
+            <tr>
+              <th>ITEM</th>
+              <th>QTY</th>
+              <th>PRICE/RATE</th>
+              <th className="text-center">ACTION</th>
+            </tr>
+          </thead>
+          <tbody>{itemTable}</tbody>
+        </Table>
+      ) : (
+        <div className="alert alert-info" role="alert">
+          No items added
+        </div>
+      )}
+
       <Button className="fw-bold" onClick={onRowAdd}>
         Add Item
       </Button>
@@ -42,38 +56,21 @@ const ItemRow = (props) => {
   const onDelEvent = () => {
     props.onDelEvent(props.item);
   };
+
+  // Convert itemPrice to a number and use toFixed()
+  const formattedPrice = Number(props.item.itemPrice).toFixed(2);
+
   return (
     <tr>
       <td style={{ width: "100%" }}>
-        <EditableField
-          onItemizedItemEdit={(evt) =>
-            props.onItemizedItemEdit(evt, props.item.itemId)
-          }
-          cellData={{
-            type: "text",
-            name: "itemName",
-            placeholder: "Item name",
-            value: props.item.itemName,
-            id: props.item.itemId,
-          }}
-        />
-        <EditableField
-          onItemizedItemEdit={(evt) =>
-            props.onItemizedItemEdit(evt, props.item.itemId)
-          }
-          cellData={{
-            type: "text",
-            name: "itemDescription",
-            placeholder: "Item description",
-            value: props.item.itemDescription,
-            id: props.item.itemId,
-          }}
-        />
+        <span>{props.item.itemName}</span>
+        <br />
+        <small>{props.item.itemDescription}</small>
       </td>
       <td style={{ minWidth: "70px" }}>
         <EditableField
           onItemizedItemEdit={(evt) =>
-            props.onItemizedItemEdit(evt, props.item.itemId)
+            props.onItemizedItemEdit(evt, props.item.id)
           }
           cellData={{
             type: "number",
@@ -81,27 +78,14 @@ const ItemRow = (props) => {
             min: 1,
             step: "1",
             value: props.item.itemQuantity,
-            id: props.item.itemId,
+            id: props.item.id,
           }}
         />
       </td>
       <td style={{ minWidth: "130px" }}>
-        <EditableField
-          onItemizedItemEdit={(evt) =>
-            props.onItemizedItemEdit(evt, props.item.itemId)
-          }
-          cellData={{
-            leading: props.currency,
-            type: "number",
-            name: "itemPrice",
-            min: 1,
-            step: "0.01",
-            presicion: 2,
-            textAlign: "text-end",
-            value: props.item.itemPrice,
-            id: props.item.itemId,
-          }}
-        />
+        <span>
+          {props.currency} {formattedPrice}
+        </span>
       </td>
       <td className="text-center" style={{ minWidth: "50px" }}>
         <BiTrash
